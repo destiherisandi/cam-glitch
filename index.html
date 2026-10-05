@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Faceless Blur Studio</title>
+<!-- Simpan sebagai index.html dan buka di Chrome/Edge/Safari, atau upload ke hosting statis (Netlify, GitHub Pages, dll). -->
+<style>
+:root{--bg:#f2f2f2;--fg:#111;--card:#fff;--line:#d4d4d4;--ac:#111;--acfg:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b0b0b;--fg:#eee;--card:#161616;--line:#2c2c2c;--ac:#eee;--acfg:#111}}
+:root[data-theme="dark"]{--bg:#0b0b0b;--fg:#eee;--card:#161616;--line:#2c2c2c;--ac:#eee;--acfg:#111}
+*{box-sizing:border-box}
+body{margin:0 auto;background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px;max-width:1900px}
+h1{font-size:20px;margin:4px 0 2px;letter-spacing:.5px}
+p.s{margin:0 0 14px;font-size:13px;opacity:.65}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:12px}
+#stage{text-align:center;min-height:120px}
+canvas{border-radius:8px;touch-action:none;display:none;margin:0 auto;cursor:crosshair}
+#empty{padding:40px 10px;font-size:14px;opacity:.7}
+.row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+.row label{width:96px;flex:none}
+.row input[type=range]{flex:1;accent-color:var(--ac)}
+.row output{width:38px;text-align:right;opacity:.7}
+.btns{display:flex;flex-wrap:wrap;gap:8px}
+h2{font-size:13px;margin:0 0 8px;opacity:.7;font-weight:600}
+button,.file{font:inherit;font-size:14px;padding:10px 14px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg);cursor:pointer}
+button.p,.file.p{background:var(--ac);color:var(--acfg);border-color:var(--ac)}
+input[type=file]{display:none}
+.hint{font-size:12px;opacity:.6;margin-top:8px}
+.chip.on{background:var(--ac);color:var(--acfg);border-color:var(--ac)}
+select{font:inherit;font-size:14px;padding:8px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+#vid{display:none}
+.app{display:grid;grid-template-columns:minmax(280px,340px) minmax(0,1fr);gap:14px;align-items:start}
+.side{grid-column:1;grid-row:1;max-height:calc(100vh - 92px);overflow-y:auto;padding-right:4px;overscroll-behavior:contain}
+.main{grid-column:2;grid-row:1;position:sticky;top:8px;min-width:0}
+#stage{overflow:hidden}
+@media (max-width:820px){
+  .app{grid-template-columns:1fr}
+  .side,.main{grid-column:1;max-height:none;overflow:visible;position:static}
+  .main{grid-row:1}.side{grid-row:2}
+}
+.vo{display:none}
+</style>
+</head>
+<body>
+<h1>FACELESS BLUR STUDIO</h1>
+<p class="s">Efek wajah, efek latar, dan efek seluruh layar untuk foto dan video.</p>
+
+<div class="app">
+<div class="main">
+<div class="card" id="stage">
+  <div id="empty">Belum ada media. Pilih foto atau video.</div>
+  <canvas id="cv"></canvas>
+  <video id="vid" muted playsinline loop></video>
+</div>
+
+<div class="card">
+  <div class="btns">
+    <label class="file p">Pilih foto / video<input type="file" id="f" accept="image/*,video/*"></label>
+    <button id="cam" class="p">Kamera langsung</button><button id="auto">Deteksi wajah</button><button id="trk">Pelacak wajah: Mati</button>
+    <button id="dlimg" class="p">Ambil foto (PNG)</button>
+    <button id="er">Mode: Lukis</button>
+    <button id="clr">Hapus area</button>
+  </div>
+  <div class="btns vo" style="margin-top:8px">
+    <button id="pp">Pause</button><button id="flip">Cermin: Hidup</button><button id="sw">Ganti kamera</button>
+    <button id="rec" class="p">Rekam &amp; unduh video</button>
+  </div>
+  <div class="hint" id="hint">Tekan Deteksi wajah (foto) atau Pelacak wajah (video) agar blur otomatis mengikuti wajah. Bisa juga melukis manual. Pilih efek dan bentuk area di panel kiri. Deteksi butuh internet untuk memuat model sekali. Ganti Kualitas di panel kiri untuk hasil lebih jernih.</div>
+</div>
+
+</div>
+<div class="side">
+<div class="card">
+  <h2>EFEK PENUTUP WAJAH</h2>
+  <div class="btns" id="fxs"></div>
+  <h2 style="margin-top:12px">BENTUK AREA (untuk Deteksi / Pelacak)</h2>
+  <div class="btns" id="shapes"></div>
+  <div class="row" id="emorow" style="display:none"><label>Emoji</label><select id="emo"><option>😶</option><option>🙂</option><option>😎</option><option>🤡</option><option>👻</option><option>🙈</option><option>💀</option><option>🐸</option><option>🐱</option><option>🌚</option></select></div>
+</div>
+
+<div class="card">
+  <h2>EFEK LATAR (di luar area wajah)</h2>
+  <div class="btns" id="bgs"></div>
+  <div class="hint">Dipakai di luar area wajah. Kalau area wajah belum ada (belum Deteksi / lukis), efek menutup seluruh gambar.</div>
+</div>
+
+<div class="card">
+  <h2>EFEK SELURUH LAYAR (wajah + latar sekaligus)</h2>
+  <div class="btns" id="scs"></div>
+  <div class="hint">Pewarnaan dan suasana untuk keseluruhan gambar. Kalau Hitam putih membuat warna tidak muncul, ubah &quot;B&amp;W / kontras berlaku pada&quot; di bawah.</div>
+</div>
+
+<div class="card">
+  <h2>KOMBINASI SIAP PAKAI (wajah + latar + layar)</h2>
+  <div class="btns" id="combos"></div>
+</div>
+
+<div class="card">
+  <h2>PRESET SIAP PAKAI</h2>
+  <div class="btns" id="presets"></div>
+</div>
+
+<div class="card">
+  <div class="row"><label>Blur gerak</label><input type="range" id="len" min="10" max="300" value="120"><output></output></div>
+  <div class="row"><label>Sudut gerak</label><input type="range" id="ang" min="0" max="180" value="0"><output></output></div>
+  <div class="row"><label>Ukuran kuas</label><input type="range" id="br" min="2" max="40" value="14"><output></output></div>
+  <div class="row"><label>Hitam putih</label><input type="range" id="bw" min="0" max="100" value="100"><output></output></div>
+  <div class="row"><label>Kontras</label><input type="range" id="ct" min="80" max="220" value="140"><output></output></div>
+  <div class="row"><label>Kekuatan</label><input type="range" id="str" min="5" max="100" value="40"><output></output></div>
+  <div class="row"><label>Area wajah</label><input type="range" id="sz" min="80" max="250" value="150"><output></output></div>
+  <div class="row"><label>Kualitas</label><select id="qual"><option value="sd">Standar (1280)</option><option value="hd" selected>HD (1920)</option><option value="max">Maksimal (3840)</option></select></div>
+  <div class="row"><label>B&amp;W / kontras</label><select id="scope"><option value="all">Seluruh layar</option><option value="face">Hanya wajah</option><option value="bg">Hanya latar</option></select></div>
+  <div class="row"><label>Ukuran sel</label><input type="range" id="cell" min="4" max="40" value="12"><output></output></div>
+  <div class="row"><label>Kekuatan latar</label><input type="range" id="bgi" min="0" max="100" value="100"><output></output></div>
+  <div class="row"><label>Kekuatan layar</label><input type="range" id="sci" min="0" max="100" value="70"><output></output></div>
+  <div class="row"><label>Grain</label><input type="range" id="gr" min="0" max="60" value="20"><output></output></div>
+</div>
+
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const cv=$('cv'),ctx=cv.getContext('2d'),vid=$('vid');
+let W=0,H=0,base,bctx,mask,blurred,noise,erase=false,has=false,isVid=false,dirty=true,recording=false;
+const mk=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c};
+const val=id=>+$(id).value;
+const IDS=['len','ang','br','bw','ct','gr','str','sz','cell','bgi','sci'];
+const show=()=>IDS.forEach(i=>$(i).nextElementSibling.textContent=$(i).value);
+IDS.forEach(i=>$(i).addEventListener('input',()=>{show();dirty=true}));show();
+
+let bg='none',scr='none',fbase,bgc,inv,snap,fin;
+let fx='motion',shape='oval',tracking=false,busy=false,fc=0,sm=null,lastG=1,mbox=null;
+const FX={motion:'Motion blur',pixel:'Pixelate',gauss:'Blur biasa',frost:'Kaca buram',solid:'Siluet hitam',glitch:'Glitch RGB',emoji:'Emoji'};
+const SH={oval:'Oval',box:'Kotak',eyes:'Strip mata'};
+const BG={none:'Tidak ada',halftone:'Halftone B&W',halftonec:'Halftone warna',mosaic:'Mosaik kotak',hex:'Mosaik heksagon',pixbig:'Pixel besar',bars:'Garis halftone',ascii:'ASCII',bgblur:'Blur latar',dim:'Gelap / spotlight'};
+const SC={none:'Tidak ada',vivid:'Warna cerah',neon:'Neon cyber',liminal:'Liminal',vapor:'Vaporwave',vhs:'VHS lawas',dream:'Dream glow',retro:'Retro sepia',cine:'Sinematik teal-orange'};
+function chips(id,o,fn){for(const k in o){const b=document.createElement('button');b.className='chip';b.dataset.k=k;b.textContent=o[k];b.onclick=()=>fn(k);$(id).appendChild(b)}}
+function mark(){document.querySelectorAll('#fxs .chip').forEach(b=>b.classList.toggle('on',b.dataset.k===fx));document.querySelectorAll('#shapes .chip').forEach(b=>b.classList.toggle('on',b.dataset.k===shape));document.querySelectorAll('#bgs .chip').forEach(b=>b.classList.toggle('on',b.dataset.k===bg));document.querySelectorAll('#scs .chip').forEach(b=>b.classList.toggle('on',b.dataset.k===scr));$('emorow').style.display=fx==='emoji'?'flex':'none'}
+function setFx(k){fx=k;mark();dirty=true}
+function setShape(k){shape=k;mark();if(sm)paintFace(sm,lastG);dirty=true}
+function setBg(k){bg=k;mark();dirty=true}
+function setScr(k,auto=true){scr=k;
+  if(auto&&k!=='none'&&$('scope').value==='all'&&val('bw')>0){$('scope').value='face';$('hint').textContent='B&W/kontras dipindah ke "Hanya wajah" supaya warna efek layar tetap terlihat. Ubah lewat pilihan "B&W / kontras berlaku pada".'}
+  mark();dirty=true}
+$('scope').onchange=()=>{dirty=true};
+chips('fxs',FX,setFx);chips('shapes',SH,setShape);chips('bgs',BG,k=>setBg(k));chips('scs',SC,k=>setScr(k));mark();
+const PRE={
+ 'Klasik B&W':{len:120,ang:0,bw:100,ct:140,gr:20},
+ 'Ghost tipis':{len:60,ang:0,bw:100,ct:120,gr:15},
+ 'Sapuan ekstrem':{len:280,ang:0,bw:100,ct:160,gr:30},
+ 'Glitch vertikal':{len:150,ang:90,bw:100,ct:150,gr:35},
+ 'Diagonal':{len:140,ang:35,bw:100,ct:140,gr:25},
+ 'Warna lembut':{len:100,ang:0,bw:0,ct:110,gr:10},
+ 'Film noir':{len:130,ang:0,bw:100,ct:200,gr:50},
+ 'Pixelate wajah':{fx:'pixel',shape:'box',str:40,bw:0,ct:100,gr:0},
+ 'Sensor mata':{fx:'solid',shape:'eyes',bw:0,ct:100,gr:0},
+ 'Partial blur mata':{fx:'gauss',shape:'eyes',str:35,bw:0,ct:100,gr:0},
+ 'Kaca buram':{fx:'frost',shape:'oval',str:45,bw:0,ct:105,gr:5},
+ 'Cyber glitch':{fx:'glitch',shape:'box',str:50,bw:0,ct:120,gr:15},
+ 'Siluet misterius':{fx:'solid',shape:'oval',bw:100,ct:150,gr:30},
+ 'Emoji wajah':{fx:'emoji',shape:'oval',bw:0,ct:100,gr:0}
+};
+const COMBO={
+ 'Pop art':{fx:'pixel',shape:'box',str:35,bg:'halftonec',scr:'vivid',scope:'face',bw:0,ct:100,cell:14,gr:8,sci:60},
+ 'Koran halftone':{fx:'solid',shape:'oval',bg:'halftone',scr:'none',scope:'face',bw:100,ct:150,cell:10,gr:25},
+ 'Cyber neon':{fx:'glitch',shape:'box',str:50,bg:'hex',scr:'neon',scope:'face',bw:0,ct:100,cell:14,gr:12,sci:70},
+ 'Retro VHS':{fx:'motion',shape:'oval',len:120,ang:0,bg:'bars',scr:'vhs',scope:'face',bw:0,ct:100,cell:8,gr:30,sci:85},
+ 'Liminal sunyi':{fx:'frost',shape:'oval',str:50,bg:'none',scr:'liminal',scope:'face',bw:0,ct:100,gr:25,sci:85},
+ 'Dreamcore':{fx:'gauss',shape:'oval',str:60,bg:'bgblur',scr:'vapor',scope:'face',bw:0,ct:100,gr:15,sci:75},
+ 'Mozaik anonim':{fx:'pixel',shape:'box',str:60,bg:'mosaic',scr:'vivid',scope:'face',bw:0,ct:100,cell:16,gr:0,sci:50},
+ 'Terminal ASCII':{fx:'solid',shape:'oval',bg:'ascii',scr:'none',scope:'face',bw:0,ct:100,cell:10,gr:10},
+ 'Sinema misteri':{fx:'solid',shape:'eyes',bg:'dim',scr:'cine',scope:'face',bw:100,ct:130,gr:30,sci:80}
+};
+for(const k in COMBO){const b=document.createElement('button');b.textContent=k;
+ b.onclick=()=>{const p=COMBO[k];setFx(p.fx);setShape(p.shape);setBg(p.bg);setScr(p.scr,false);$('scope').value=p.scope||'all';
+  for(const i of IDS)if(i in p)$(i).value=p[i];show();dirty=true};$('combos').appendChild(b)}
+for(const k in PRE){const b=document.createElement('button');b.textContent=k;
+ b.onclick=()=>{const p=PRE[k];setFx(p.fx||'motion');setShape(p.shape||'oval');for(const i of IDS)if(i in p)$(i).value=p[i];show();dirty=true};$('presets').appendChild(b)}
+
+function setup(w,h){
+  const lim={sd:1280,hd:1920,max:3840}[$('qual').value]||1920,s=Math.min(1,lim/Math.max(w,h));
+  W=Math.round(w*s);H=Math.round(h*s);cv.width=W;cv.height=H;
+  base=mk(W,H);bctx=base.getContext('2d');bctx.imageSmoothingEnabled=true;bctx.imageSmoothingQuality='high';mask=mk(W,H);blurred=mk(W,H);
+  noise=mk(256,256);fbase=mk(W,H);bgc=mk(W,H);inv=mk(W,H);snap=mk(W,H);fin=mk(W,H);
+  const nc=noise.getContext('2d'),d=nc.createImageData(256,256);
+  for(let i=0;i<d.data.length;i+=4){const v=Math.random()*255;d.data[i]=d.data[i+1]=d.data[i+2]=v;d.data[i+3]=255}
+  nc.putImageData(d,0,0);
+  has=true;dirty=true;mbox=null;sm=null;cv.style.display='block';$('empty').style.display='none';
+  document.querySelector('.vo').style.display=isVid?'flex':'none';
+  fit();
+}
+function fit(){
+  if(!has)return;
+  const st=$('stage'),mob=innerWidth<=820,aw=Math.max(120,st.clientWidth-26),ah=mob?innerHeight*.7:Math.max(260,innerHeight-330);
+  const k=Math.max(.05,Math.min(aw/W,ah/H));
+  cv.style.width=Math.round(W*k)+'px';cv.style.height=Math.round(H*k)+'px';
+}
+addEventListener('resize',fit);
+let curImg=null;
+$('qual').onchange=()=>{
+  if(!has)return;
+  if(recording){$('hint').textContent='Hentikan rekaman dulu sebelum mengganti kualitas.';return}
+  const om=mask,ow=W,ob=mbox;
+  if(isVid&&vid.videoWidth)setup(vid.videoWidth,vid.videoHeight);
+  else if(curImg){setup(curImg.naturalWidth,curImg.naturalHeight);bctx.drawImage(curImg,0,0,W,H)}
+  else return;
+  mask.getContext('2d').drawImage(om,0,0,W,H);
+  if(ob){const k=W/ow;mbox={x0:ob.x0*k,y0:ob.y0*k,x1:ob.x1*k,y1:ob.y1*k}}
+  dirty=true;$('hint').textContent='Kualitas diganti: '+W+' x '+H+' px.';
+};
+
+let live=false,mirror=true,facing='user';
+function stopCam(){if(vid.srcObject){vid.srcObject.getTracks().forEach(t=>t.stop());vid.srcObject=null}live=false}
+$('f').onchange=e=>{stopCam();
+  const file=e.target.files[0];if(!file)return;
+  const url=URL.createObjectURL(file);
+  if(file.type.startsWith('video')){
+    isVid=true;curImg=null;vid.src=url;
+    vid.onloadedmetadata=()=>{setup(vid.videoWidth,vid.videoHeight);vid.play();$('pp').textContent='Pause'};
+  }else{
+    isVid=false;curImg=null;vid.pause();
+    const img=new Image();
+    img.onload=()=>{curImg=img;setup(img.naturalWidth,img.naturalHeight);bctx.drawImage(img,0,0,W,H)};
+    img.src=url;
+  }
+};
+
+const sm2=mk(2,2),chc=mk(2,2);
+function mkBlur(){
+  const b=blurred.getContext('2d'),S=val('str');
+  b.globalCompositeOperation='source-over';b.globalAlpha=1;b.filter='none';b.clearRect(0,0,W,H);
+  if(fx==='motion'){
+    const n=isVid?12:28,L=val('len')*W/1000*3,a=val('ang')*Math.PI/180;
+    for(let i=0;i<n;i++){const t=(i/(n-1)-.5)*L;b.globalAlpha=1/(i+1);b.drawImage(base,Math.cos(a)*t,Math.sin(a)*t)}
+    b.globalAlpha=1;
+  }else if(fx==='pixel'){
+    const bs=Math.max(3,Math.round((3+S*.5)*W/640)),sw=Math.max(1,Math.round(W/bs)),sh=Math.max(1,Math.round(H/bs));
+    sm2.width=sw;sm2.height=sh;sm2.getContext('2d').drawImage(base,0,0,sw,sh);
+    b.imageSmoothingEnabled=false;b.drawImage(sm2,0,0,sw,sh,0,0,W,H);b.imageSmoothingEnabled=true;
+  }else if(fx==='gauss'||fx==='frost'){
+    b.filter=`blur(${Math.max(1,S*W/1250)}px)`;b.drawImage(base,0,0);b.filter='none';
+    if(fx==='frost'){b.fillStyle='rgba(255,255,255,.28)';b.fillRect(0,0,W,H)}
+  }else if(fx==='solid'){b.fillStyle='#000';b.fillRect(0,0,W,H)}
+  else if(fx==='glitch'){
+    if(chc.width!==W||chc.height!==H){chc.width=W;chc.height=H}
+    const cc=chc.getContext('2d'),d=Math.round(S/100*W*.04)+2;
+    b.fillStyle='#000';b.fillRect(0,0,W,H);b.globalCompositeOperation='lighter';
+    [['#f00',-d],['#0f0',0],['#00f',d]].forEach(([c,o])=>{
+      cc.globalCompositeOperation='source-over';cc.drawImage(base,0,0);
+      cc.globalCompositeOperation='multiply';cc.fillStyle=c;cc.fillRect(0,0,W,H);
+      b.drawImage(chc,o,0)});
+    b.globalCompositeOperation='source-over';
+    for(let i=0;i<8;i++){const y=Math.random()*H|0,h=Math.max(2,(H*.01+Math.random()*H*.04)|0),o=(Math.random()-.5)*W*.2*S/100;b.drawImage(base,0,y,W,h,o,y,W,h)}
+  }
+}
+
+const tmp=mk(2,2),samp=mk(2,2),mid=mk(2,2),scl=mk(2,4);
+(()=>{const c=scl.getContext('2d');c.fillStyle='rgba(0,0,0,.3)';c.fillRect(0,0,2,2)})();
+function sampleGrid(src,cell){
+  const sw=Math.max(1,Math.ceil(W/cell)),sh=Math.max(1,Math.ceil(H/cell));
+  let from=src;
+  if(W>sw*2.5){mid.width=sw*2;mid.height=sh*2;mid.getContext('2d').drawImage(src,0,0,sw*2,sh*2);from=mid}
+  samp.width=sw;samp.height=sh;
+  const sc=samp.getContext('2d',{willReadFrequently:true});
+  sc.clearRect(0,0,sw,sh);sc.drawImage(from,0,0,sw,sh);
+  return{d:sc.getImageData(0,0,sw,sh).data,sw,sh};
+}
+function mkBg(){
+  const b=bgc.getContext('2d');
+  b.globalCompositeOperation='source-over';b.globalAlpha=1;b.filter='none';b.clearRect(0,0,W,H);
+  if(bg==='bgblur'){b.filter=`blur(${Math.max(3,W/50)}px)`;b.drawImage(fbase,0,0);b.filter='none';return}
+  if(bg==='dim'){b.drawImage(fbase,0,0);b.fillStyle='rgba(0,0,0,.75)';b.fillRect(0,0,W,H);return}
+  const cell=Math.max(bg==='ascii'?8:4,Math.round(val('cell')*W/640));
+  const{d,sw,sh}=sampleGrid(fbase,cell),cw=W/sw,ch=H/sh;
+  const L=i=>(d[i]*.299+d[i+1]*.587+d[i+2]*.114)/255;
+  if(bg==='halftone'){
+    b.fillStyle='#f4f1ea';b.fillRect(0,0,W,H);b.fillStyle='#111';b.beginPath();
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const r=Math.sqrt(1-L((y*sw+x)*4))*cw*.74;
+      if(r>.4){const cx=(x+.5)*cw,cy=(y+.5)*ch;b.moveTo(cx+r,cy);b.arc(cx,cy,r,0,6.2832)}
+    }
+    b.fill();
+  }else if(bg==='halftonec'){
+    b.fillStyle='#0d0d10';b.fillRect(0,0,W,H);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4,r=(.25+.75*Math.sqrt(L(i)))*cw*.62;
+      b.fillStyle=`rgb(${d[i]},${d[i+1]},${d[i+2]})`;
+      b.beginPath();b.arc((x+.5)*cw,(y+.5)*ch,r,0,6.2832);b.fill();
+    }
+  }else if(bg==='mosaic'){
+    b.fillStyle='#050505';b.fillRect(0,0,W,H);const g=Math.max(.6,cw*.06);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4;b.fillStyle=`rgb(${d[i]},${d[i+1]},${d[i+2]})`;
+      b.fillRect(x*cw+g,y*ch+g,cw-g*2,ch-g*2);
+    }
+  }else if(bg==='hex'){
+    b.fillStyle='#050505';b.fillRect(0,0,W,H);
+    const s=cw*.62,dx=Math.sqrt(3)*s,dy=1.5*s,q=s*.93;
+    for(let r=0,cy=0;cy<H+s;r++,cy=r*dy){
+      for(let cx=(r%2)*dx/2;cx<W+s;cx+=dx){
+        const x=Math.min(sw-1,Math.max(0,cx/cw|0)),y=Math.min(sh-1,Math.max(0,cy/ch|0)),i=(y*sw+x)*4;
+        b.fillStyle=`rgb(${d[i]},${d[i+1]},${d[i+2]})`;b.beginPath();
+        for(let k=0;k<6;k++){const a=Math.PI/180*(60*k+30);b[k?'lineTo':'moveTo'](cx+q*Math.cos(a),cy+q*Math.sin(a))}
+        b.closePath();b.fill();
+      }
+    }
+  }else if(bg==='pixbig'){
+    b.imageSmoothingEnabled=false;b.drawImage(samp,0,0,sw,sh,0,0,W,H);b.imageSmoothingEnabled=true;
+  }else if(bg==='bars'){
+    b.fillStyle='#0b0b0d';b.fillRect(0,0,W,H);
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4,h=Math.max(.5,L(i)*ch*.92);
+      b.fillStyle=`rgb(${d[i]},${d[i+1]},${d[i+2]})`;
+      b.fillRect(x*cw,(y+.5)*ch-h/2,cw+.6,h);
+    }
+  }else if(bg==='ascii'){
+    b.fillStyle='#050805';b.fillRect(0,0,W,H);
+    const R=' .:-=+*#%@';
+    b.font=`bold ${Math.max(6,ch*1.05)}px monospace`;b.textAlign='center';b.textBaseline='middle';
+    for(let y=0;y<sh;y++)for(let x=0;x<sw;x++){
+      const i=(y*sw+x)*4,l=L(i),c=R[Math.min(9,l*10|0)];
+      if(c===' ')continue;
+      b.fillStyle=`rgb(${Math.min(255,d[i]*1.3+30)},${Math.min(255,d[i+1]*1.3+30)},${Math.min(255,d[i+2]*1.3+30)})`;
+      b.fillText(c,(x+.5)*cw,(y+.5)*ch);
+    }
+  }
+}
+function rs(c){c.globalCompositeOperation='source-over';c.globalAlpha=1;c.filter='none'}
+function vig(f,col,a0){
+  const g=f.createRadialGradient(W/2,H/2,Math.min(W,H)*.3,W/2,H/2,Math.hypot(W,H)*.6);
+  g.addColorStop(0,'rgba(0,0,0,0)');g.addColorStop(1,col);
+  rs(f);f.fillStyle=g;f.fillRect(0,0,W,H);
+}
+function lin(f,c0,c1){const g=f.createLinearGradient(0,0,0,H);g.addColorStop(0,c0);g.addColorStop(1,c1);return g}
+function split(f,src,d){
+  if(chc.width!==W||chc.height!==H){chc.width=W;chc.height=H}
+  const cc=chc.getContext('2d');
+  rs(f);f.fillStyle='#000';f.fillRect(0,0,W,H);f.globalCompositeOperation='lighter';
+  [['#f00',-d],['#0f0',0],['#00f',d]].forEach(([c,o])=>{
+    cc.globalCompositeOperation='source-over';cc.drawImage(src,0,0);
+    cc.globalCompositeOperation='multiply';cc.fillStyle=c;cc.fillRect(0,0,W,H);
+    f.drawImage(chc,o,0)});
+  rs(f);
+}
+function applyScr(){
+  if(scr==='none')return;
+  const I=val('sci')/100;if(I<=0)return;
+  const sc=snap.getContext('2d');rs(sc);sc.clearRect(0,0,W,H);sc.drawImage(cv,0,0);
+  const f=fin.getContext('2d');rs(f);f.clearRect(0,0,W,H);
+  const gl=(blur,a,mode,extra)=>{f.globalCompositeOperation=mode;f.globalAlpha=a;f.filter=`blur(${blur}px)${extra||''}`;f.drawImage(snap,0,0);rs(f)};
+  const wash=(fill,a,mode)=>{f.globalCompositeOperation=mode;f.globalAlpha=a;f.fillStyle=fill;f.fillRect(0,0,W,H);rs(f)};
+  if(scr==='vivid'){
+    f.filter='saturate(1.9) contrast(1.15) brightness(1.08)';f.drawImage(snap,0,0);rs(f);
+  }else if(scr==='neon'){
+    f.filter='saturate(2.2) contrast(1.35) brightness(.95)';f.drawImage(snap,0,0);rs(f);
+    const g=f.createLinearGradient(0,0,W,H);g.addColorStop(0,'#ff00aa');g.addColorStop(1,'#00e5ff');
+    wash(g,.55,'overlay');gl(W/90,.3,'lighter',' brightness(1.3)');
+  }else if(scr==='liminal'){
+    f.filter='saturate(.5) sepia(.4) brightness(1.12) contrast(.82) blur(.6px)';f.drawImage(snap,0,0);rs(f);
+    wash('rgba(255,238,170,.22)',1,'screen');gl(W/60,.35,'screen');vig(f,'rgba(25,20,0,.5)');
+  }else if(scr==='vapor'){
+    f.filter='saturate(1.5) contrast(1.05) brightness(1.05)';f.drawImage(snap,0,0);rs(f);
+    wash(lin(f,'#ff71ce','#01cdfe'),.85,'soft-light');wash('#b967ff',.14,'screen');
+  }else if(scr==='vhs'){
+    split(f,snap,Math.max(2,W*.006));
+    f.filter='saturate(1.3) contrast(1.1) blur(.5px)';f.drawImage(fin,0,0);rs(f);
+    for(let i=0;i<2;i++){const y=Math.random()*H|0,h=Math.max(3,H*(.01+Math.random()*.02))|0,o=(Math.random()-.5)*W*.06;f.drawImage(snap,0,y,W,h,o,y,W,h)}
+    f.fillStyle=f.createPattern(scl,'repeat');f.fillRect(0,0,W,H);
+    vig(f,'rgba(0,0,0,.35)');
+  }else if(scr==='dream'){
+    f.filter='brightness(1.08) saturate(1.25) contrast(.95)';f.drawImage(snap,0,0);rs(f);
+    gl(W/45,.6,'screen');wash('rgba(255,200,230,.12)',1,'screen');
+  }else if(scr==='retro'){
+    f.filter='sepia(.85) contrast(1.1) brightness(.95) saturate(1.1)';f.drawImage(snap,0,0);rs(f);
+    vig(f,'rgba(30,15,0,.55)');
+  }else if(scr==='cine'){
+    f.filter='contrast(1.15) saturate(1.1)';f.drawImage(snap,0,0);rs(f);
+    wash(lin(f,'#0a6c85','#ff8a3d'),.8,'soft-light');
+    f.fillStyle='#000';const bh=H*.09;f.fillRect(0,0,W,bh);f.fillRect(0,H-bh,W,bh);
+  }
+  rs(ctx);ctx.globalAlpha=I;ctx.drawImage(fin,0,0);ctx.globalAlpha=1;
+}
+function render(){
+  if(isVid){if(live&&mirror){bctx.save();bctx.translate(W,0);bctx.scale(-1,1);bctx.drawImage(vid,0,0,W,H);bctx.restore()}else bctx.drawImage(vid,0,0,W,H)}
+  mkBlur();
+  if(tmp.width!==W||tmp.height!==H){tmp.width=W;tmp.height=H}
+  const tc=tmp.getContext('2d');
+  tc.globalCompositeOperation='source-over';tc.clearRect(0,0,W,H);
+  tc.drawImage(blurred,0,0);
+  tc.globalCompositeOperation='destination-in';
+  tc.drawImage(mask,0,0);
+  const scope=$('scope').value,F=`grayscale(${val('bw')}%) contrast(${val('ct')}%)`;
+  const fb=fbase.getContext('2d');rs(fb);fb.clearRect(0,0,W,H);
+  fb.filter=(scope==='all'||scope==='bg')?F:'none';fb.drawImage(base,0,0);fb.filter='none';
+  rs(ctx);ctx.drawImage(fbase,0,0);
+  const bi=val('bgi')/100;
+  if(bg!=='none'&&bi>0){
+    mkBg();
+    const ic=inv.getContext('2d');rs(ic);ic.clearRect(0,0,W,H);ic.fillStyle='#000';ic.fillRect(0,0,W,H);
+    ic.globalCompositeOperation='destination-out';ic.drawImage(mask,0,0);rs(ic);
+    const b=bgc.getContext('2d');b.globalCompositeOperation='destination-in';b.drawImage(inv,0,0);rs(b);
+    ctx.globalAlpha=bi;ctx.drawImage(bgc,0,0);ctx.globalAlpha=1;
+  }
+  ctx.filter=(scope==='all'||scope==='face')?F:'none';
+  ctx.drawImage(tmp,0,0);
+  ctx.filter='none';
+  if(fx==='emoji'&&mbox){
+    const w=mbox.x1-mbox.x0,h=mbox.y1-mbox.y0,z=Math.max(w,h)*.8;
+    ctx.font=`${z}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillText($('emo').value,(mbox.x0+mbox.x1)/2,(mbox.y0+mbox.y1)/2+z*.06);
+  }
+  applyScr();
+  const g=val('gr')/100;
+  if(g>0){
+    ctx.globalAlpha=g;ctx.globalCompositeOperation='overlay';
+    ctx.save();ctx.translate(Math.random()*256|0,Math.random()*256|0);
+    ctx.fillStyle=ctx.createPattern(noise,'repeat');
+    ctx.fillRect(-256,-256,W+256,H+256);ctx.restore();
+    ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
+  }
+}
+(function tick(){
+  if(has&&(dirty||(isVid&&!vid.paused))){render();dirty=false;
+    if(tracking&&isVid&&!busy&&++fc%(live?1:2)===0)trackOnce();}
+  requestAnimationFrame(tick);
+})();
+
+let down=false,last=null;
+const pos=e=>{const r=cv.getBoundingClientRect();return{x:(e.clientX-r.left)*W/r.width,y:(e.clientY-r.top)*H/r.height}};
+function dab(p){
+  const m=mask.getContext('2d'),r=val('br')*W/200;
+  const g=m.createRadialGradient(p.x,p.y,r*.3,p.x,p.y,r);
+  g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');
+  if(!erase)mbox=mbox?{x0:Math.min(mbox.x0,p.x-r),y0:Math.min(mbox.y0,p.y-r),x1:Math.max(mbox.x1,p.x+r),y1:Math.max(mbox.y1,p.y+r)}:{x0:p.x-r,y0:p.y-r,x1:p.x+r,y1:p.y+r};
+  m.globalCompositeOperation=erase?'destination-out':'source-over';
+  m.fillStyle=g;m.beginPath();m.arc(p.x,p.y,r,0,7);m.fill();
+}
+function stroke(p){
+  if(last){
+    const dx=p.x-last.x,dy=p.y-last.y,d=Math.hypot(dx,dy),st=Math.max(1,val('br')*W/800);
+    for(let i=0;i<d;i+=st)dab({x:last.x+dx*i/d,y:last.y+dy*i/d});
+  }
+  dab(p);last=p;dirty=true;
+}
+cv.addEventListener('pointerdown',e=>{if(!has)return;down=true;last=null;cv.setPointerCapture(e.pointerId);stroke(pos(e))});
+cv.addEventListener('pointermove',e=>{if(down)stroke(pos(e))});
+['pointerup','pointercancel'].forEach(k=>cv.addEventListener(k,()=>{down=false;last=null}));
+
+let detP=null;
+function getDet(){
+  if(detP)return detP;
+  detP=(async()=>{
+    if('FaceDetector' in window){try{const d=new FaceDetector({fastMode:true,maxDetectedFaces:1});await d.detect(mk(8,8));
+      return async c=>{const r=await d.detect(c);return r[0]?r[0].boundingBox:null}}catch(e){}}
+    const B='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
+    const V=await import(B+'/+esm');
+    const fs=await V.FilesetResolver.forVisionTasks(B+'/wasm');
+    const fd=await V.FaceDetector.createFromOptions(fs,{baseOptions:{modelAssetPath:'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite'},runningMode:'IMAGE',minDetectionConfidence:.3});
+    return async c=>{const b=fd.detect(c).detections[0]?.boundingBox;return b?{x:b.originX,y:b.originY,width:b.width,height:b.height}:null};
+  })();
+  detP.catch(()=>{detP=null});
+  return detP;
+}
+function paintFace(b,g2){
+  lastG=g2||1;
+  const k=(val('sz')/150)*lastG,cx=b.x+b.width/2,cy=b.y+b.height/2-b.height*.05;
+  const m=mask.getContext('2d');m.globalCompositeOperation='source-over';m.clearRect(0,0,W,H);
+  let rx,ry,yc=cy;
+  if(shape==='oval'){
+    rx=b.width*.8*k;ry=b.height*.9*k;
+    m.save();m.translate(cx,yc);m.scale(rx,ry);
+    const g=m.createRadialGradient(0,0,.35,0,0,1);
+    g.addColorStop(0,'rgba(0,0,0,1)');g.addColorStop(1,'rgba(0,0,0,0)');
+    m.fillStyle=g;m.beginPath();m.arc(0,0,1,0,7);m.fill();m.restore();
+  }else{
+    rx=b.width*.6*k;ry=(shape==='eyes'?b.height*.17:b.height*.65)*k;yc=shape==='eyes'?b.y+b.height*.4:cy;
+    m.filter='blur(1.5px)';m.fillStyle='#000';m.fillRect(cx-rx,yc-ry,rx*2,ry*2);m.filter='none';
+  }
+  mbox={x0:cx-rx,y0:yc-ry,x1:cx+rx,y1:yc+ry};dirty=true;
+}
+function oval(){paintFace({x:W*.38,y:H*.17,width:W*.24,height:H*.2})}
+const dc=mk(2,2);let miss=0,vel={x:0,y:0};
+async function trackOnce(){
+  busy=true;
+  try{
+    const d=await getDet(),s=Math.min(1,360/W);
+    dc.width=Math.round(W*s);dc.height=Math.round(H*s);
+    dc.getContext('2d').drawImage(base,0,0,dc.width,dc.height);
+    const r=await d(dc);
+    if(r){
+      const b={x:r.x/s,y:r.y/s,width:r.width/s,height:r.height/s};
+      if(sm){
+        vel={x:(b.x+b.width/2)-(sm.x+sm.width/2),y:(b.y+b.height/2)-(sm.y+sm.height/2)};
+        sm={x:sm.x+(b.x-sm.x)*.8,y:sm.y+(b.y-sm.y)*.8,width:sm.width+(b.width-sm.width)*.8,height:sm.height+(b.height-sm.height)*.8};
+      }else sm=b;
+      miss=0;paintFace(sm,1);
+    }else if(sm){
+      miss++;sm.x+=vel.x*.5;sm.y+=vel.y*.5;vel.x*=.8;vel.y*=.8;
+      paintFace(sm,Math.min(2.2,1+miss*.12));
+    }else oval();
+  }catch(e){tracking=false;$('trk').textContent='Pelacak wajah: Mati';$('hint').textContent='Model deteksi gagal dimuat (cek internet). Coba lagi atau lukis manual.'}
+  busy=false;
+}
+$('auto').onclick=async()=>{
+  if(!has)return;
+  $('hint').textContent='Mendeteksi wajah...';
+  try{
+    const d=await getDet(),b=await d(base);
+    if(b){sm=b;paintFace(b);$('hint').textContent='Wajah terdeteksi.'}
+    else{oval();$('hint').textContent='Wajah tidak terdeteksi, dipakai area oval di tengah atas. Sesuaikan dengan kuas.'}
+  }catch(e){oval();$('hint').textContent='Model gagal dimuat (butuh internet). Dipakai area oval, sesuaikan dengan kuas.'}
+};
+$('trk').onclick=e=>{
+  if(!isVid){$('hint').textContent='Pelacak wajah khusus video. Untuk foto pakai Deteksi wajah.';return}
+  tracking=!tracking;sm=null;
+  e.target.textContent='Pelacak wajah: '+(tracking?'Hidup':'Mati');
+  if(tracking)$('hint').textContent='Memuat model pelacak... blur akan mengikuti wajah saat video diputar.';
+};
+$('clr').onclick=()=>{if(!has)return;mask.getContext('2d').clearRect(0,0,W,H);mbox=null;dirty=true};
+$('er').onclick=e=>{erase=!erase;e.target.textContent='Mode: '+(erase?'Hapus':'Lukis')};
+$('pp').onclick=e=>{if(vid.paused){vid.play();e.target.textContent='Pause'}else{vid.pause();e.target.textContent='Putar'}};
+
+function stamp(){const d=new Date(),z=n=>String(n).padStart(2,'0');return d.getFullYear()+z(d.getMonth()+1)+z(d.getDate())+'-'+z(d.getHours())+z(d.getMinutes())+z(d.getSeconds())}
+function save(blob,name){
+  const u=URL.createObjectURL(blob),a=document.createElement('a');
+  a.href=u;a.download=name;a.style.display='none';document.body.appendChild(a);a.click();
+  setTimeout(()=>{a.remove();URL.revokeObjectURL(u)},4000);
+}
+function snapshot(){
+  if(!has){$('hint').textContent='Belum ada media. Pilih foto/video atau nyalakan kamera dulu.';return}
+  if(dirty||isVid)render();
+  const name='faceless-'+stamp()+'.png';
+  const fallback=()=>{try{const a=document.createElement('a');a.href=cv.toDataURL('image/png');a.download=name;a.style.display='none';document.body.appendChild(a);a.click();a.remove();$('hint').textContent='Foto disimpan: '+name}catch(e){$('hint').textContent='Gagal menyimpan foto: '+e.message}};
+  try{cv.toBlob(b=>{if(b){save(b,name);$('hint').textContent='Foto disimpan: '+name+' (cek folder Unduhan).'}else fallback()},'image/png')}catch(e){fallback()}
+}
+let mrec=null;
+$('rec').onclick=()=>{
+  if(recording&&mrec){mrec.stop();return}
+  if(!has||!isVid)return;
+  if(typeof MediaRecorder==='undefined'){$('hint').textContent='Browser ini tidak mendukung perekaman. Coba Chrome atau Edge.';return}
+  const stream=cv.captureStream(30);
+  const MT=['video/mp4;codecs=avc1','video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm'].find(t=>MediaRecorder.isTypeSupported&&MediaRecorder.isTypeSupported(t))||'';
+  if(!live){try{vid.captureStream().getAudioTracks().forEach(t=>stream.addTrack(t))}catch(_){}}
+  const chunks=[];mrec=new MediaRecorder(stream,(()=>{const bps=Math.round(Math.min(40e6,Math.max(8e6,W*H*30*.2)));return MT?{mimeType:MT,videoBitsPerSecond:bps}:{videoBitsPerSecond:bps}})());
+  mrec.ondataavailable=e=>e.data.size&&chunks.push(e.data);
+  mrec.onstop=()=>{recording=false;vid.onended=null;if(!live)vid.loop=true;$('rec').textContent='Rekam & unduh video';
+    const mt=mrec.mimeType||MT||'video/webm',ext=mt.includes('mp4')?'mp4':'webm',nm='faceless-'+stamp()+'.'+ext;
+    if(!chunks.length){$('hint').textContent='Rekaman kosong, coba lagi.';return}
+    save(new Blob(chunks,{type:mt}),nm);$('hint').textContent='Video disimpan: '+nm+' (cek folder Unduhan).'};
+  recording=true;
+  if(live)$('rec').textContent='Berhenti & unduh';
+  else{vid.loop=false;vid.currentTime=0;vid.play();vid.onended=()=>{mrec.state!=='inactive'&&mrec.stop()};$('rec').textContent='Merekam... (klik untuk berhenti)'}
+  mrec.start(500);
+};
+async function startCam(){
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia){$('hint').textContent='Kamera tidak didukung. Buka lewat HTTPS atau localhost.';return}
+  stopCam();
+  try{
+    const st=await navigator.mediaDevices.getUserMedia({video:{facingMode:facing,width:{ideal:1920},height:{ideal:1080}},audio:false});
+    isVid=true;live=true;vid.removeAttribute('src');vid.loop=false;
+    vid.onloadedmetadata=()=>{setup(vid.videoWidth,vid.videoHeight);vid.play();$('pp').textContent='Pause';
+      tracking=true;sm=null;$('trk').textContent='Pelacak wajah: Hidup';
+      $('hint').textContent='Kamera aktif. Blur mengikuti wajah secara realtime (model dimuat sekali, mohon tunggu sebentar).'};
+    vid.srcObject=st;
+  }catch(e){live=false;$('hint').textContent='Kamera tidak bisa diakses. Izinkan akses kamera di browser, lalu coba lagi.'}
+}
+$('cam').onclick=startCam;
+$('flip').onclick=e=>{mirror=!mirror;sm=null;e.target.textContent='Cermin: '+(mirror?'Hidup':'Mati')};
+$('sw').onclick=()=>{facing=facing==='user'?'environment':'user';if(live)startCam()};
+cv.addEventListener('dblclick',snapshot);
+$('dlimg').onclick=snapshot;
+document.addEventListener('keydown',e=>{if(e.key==='p'&&!/INPUT|SELECT|TEXTAREA/.test(e.target.tagName))snapshot()});
+</script>
+</body>
+</html>
